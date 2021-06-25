@@ -1,0 +1,128 @@
+format_version: 10
+environments:
+  cac:
+    pipelines:
+    - cac
+    - cac-stats
+    agents:
+    - 0703d527-7667-4e89-9bc9-31d3501c03a2 #wedos-fedora-ov1500
+    - 781900c5-909e-4410-8333-9467ab2d1a53 #wedos-rhel8-ov1670
+    - a5454106-582e-44e3-97c8-a5fda611096d #wedos-rhel7-ov1571
+    - c5fa5030-d969-4145-bd41-39ab18415342 #wedos-fedora-ov1570
+pipelines:
+  cac:
+    group: cac
+    environment: cac
+    materials:
+      cac-content-master:
+        git: https://github.com/ComplianceAsCode/content
+        shallow_clone: true
+        branch: master-gocd
+    stages:
+    - build-and-test:
+        fetch_materials: true
+        keep_artifacts: false
+        approval:
+          type: success
+        jobs:
+          build-and-test:
+            run_instances: all
+            tasks:
+            - exec:
+                command: mkdir
+                arguments:
+                - -p
+                - "$WRAPPER_WORKING_DIR/content_jinja2_cache"
+            - exec:
+                command: cmake
+                arguments:
+                - ..
+                - -DSSG_OVAL_SCHEMATRON_VALIDATION_ENABLED=OFF
+                - "-DSSG_JINJA2_CACHE_DIR=$WRAPPER_WORKING_DIR/content_jinja2_cache"
+                working_directory: build
+            - exec:
+                command: make
+                arguments:
+                - -j2
+                working_directory: build
+            - exec:
+                command: mkdir
+                arguments:
+                - install_test
+                working_directory: build
+            - exec:
+                command: make
+                arguments:
+                - -j2
+                - "DESTDIR=$WRAPPER_WORKING_DIR/pipelines/$GO_PIPELINE_NAME/build/install_test"
+                - install
+                working_directory: build
+            - exec:
+                command: ctest
+                arguments:
+                - -j2
+                - --output-on-failure
+                - -E
+                - linkchecker
+                working_directory: build
+
+  cac-stats:
+    group: cac
+    environment: cac
+    materials:
+      cac-content-master:
+        git: https://github.com/ComplianceAsCode/content
+        shallow_clone: true
+        branch: master-gocd
+    #timer:
+    #  spec: "0 0 1 * * ? *"
+    #  only_on_changes: yes
+    stages:
+    - build-and-collect:
+        fetch_materials: true
+        keep_artifacts: false
+        approval:
+          type: success
+        jobs:
+          build-and-collect:
+            resources:
+            - fedora
+            artifacts:
+            - build:
+                source: statistics
+            tabs:
+              statistics: statistics/index.html
+              html-guides: statistics/guides/index.html
+              html-map-tables: statistics/tables/index.html
+            tasks:
+            - exec:
+                command: mkdir
+                arguments:
+                - -p
+                - "$WRAPPER_WORKING_DIR/content_jinja2_cache"
+            - exec:
+                command: cmake
+                arguments:
+                - ..
+                - -DSSG_OVAL_SCHEMATRON_VALIDATION_ENABLED=OFF
+                - "-DSSG_JINJA2_CACHE_DIR=$WRAPPER_WORKING_DIR/content_jinja2_cache"
+                working_directory: build
+            - exec:
+                command: make
+                arguments:
+                - -j2
+                working_directory: build
+            - exec:
+                command: make
+                arguments:
+                - html-stats
+                - -j2
+                working_directory: build
+            - exec:
+                command: make
+                arguments:
+                - html-profile-stats
+                - -j2
+                working_directory: build
+            - exec:
+                command: utils/collect-stats.sh
